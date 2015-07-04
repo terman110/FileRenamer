@@ -13,6 +13,7 @@ import getopt
 import sys
 import re
 import math
+import json
 
 # def is_number(s):
 #     try:
@@ -82,7 +83,9 @@ class ShowRenamer:
 		'''
 		Change directory
 		'''
-		self.ddir = str(a)
+		if not path:
+			path = os.getcwd()
+		self.ddir = str(path)
 		os.chdir(self.ddir)
 
 	def __BuildRemoteCmd(self):
@@ -298,6 +301,59 @@ class ShowRenamer:
 		os.system('rmdir ' + self.s_mount)
 		self.remote = False
 
+	def SaveSettings(self, json_path='showRenamerSettings.json'):
+		if os.path.isfile(json_path):
+			os.remove(json_path)
+
+		contdict = { 'ignore_str': self.ignr, \
+			 'valid_ext': self.extns, \
+			 'nocaps': self.nocaps, \
+			 'repl_needle': self.specl_n, \
+			 'repl_replace': self.specl_r, \
+			 'directory': self.ddir, \
+			 'remote': { \
+			 	'user': self.s_user, \
+			 	'password': self.s_passwd, \
+			 	'server_addr': self.s_server, \
+			 	'directory': self.s_folder, \
+			 	'mount_directory': self.s_mount, \
+			 } \
+			}
+		dump = json.dumps( contdict, sort_keys=True, indent=4)
+
+		jfile = open(json_path, "w")
+		jfile.write(dump)
+		jfile.close()
+
+		print('(:) Settings saved to JSON file')
+
+	def LoadSettings(self, json_path='showRenamerSettings.json'):
+		if not os.path.isfile(json_path):
+			json_path = os.path.dirname(os.path.realpath(__file__))+'/'+os.path.basename(json_path)
+			if not os.path.isfile(json_path):
+				print('(!) Settings file "'+json_path+'" is not present')
+				return
+
+		jfile = open(json_path, "r")
+		dump = jfile.read()
+		jfile.close()
+
+		contdict = json.loads(dump)
+
+		self.ignr = contdict['ignore_str']
+		self.extns = contdict['valid_ext']
+		self.nocaps = contdict['nocaps']
+		self.specl_n = contdict['repl_needle']
+		self.specl_r = contdict['repl_replace']
+		if contdict['directory']:
+			self.ddir = contdict['directory']
+		self.s_user = contdict['remote']['user']
+		self.s_passwd = contdict['remote']['password']
+		self.s_server = contdict['remote']['server_addr']
+		self.s_folder = contdict['remote']['directory']
+		self.s_mount = contdict['remote']['mount_directory']
+
+		print('(:) Settings loaded from JSON file')
 
 def usage():
 	print( ' ')
@@ -321,6 +377,8 @@ def usage():
 	print( '-p [--password] <password>          Server password')
 	print( '-f [--remotedir] <remote directory> Directory on server')
 	print( '-m [--mount] <mount point>          Mount point (directory) on local machine')
+	print( '-o [--settings] <settings path>    JSON file with settings')
+	print( '-g [--settings_save]               Save settings to local file')
 	print( ' ')
 	print( ' ')
 	print( 'As a server password you can create a file ".pswd" in the directory with the output')
@@ -335,19 +393,30 @@ if __name__ == "__main__":
 	argv = sys.argv[1:]
 
 	sr = ShowRenamer()
-	sr.GetPasswdFromFile()
 
 	try:
-		opts, args = getopt.getopt(argv,"hd:u:p:s:f:m:rc")# ,["ifile=","ofile="])
+		opts, args = getopt.getopt(argv,"hd:u:p:s:f:m:rc:o:g")# ,["ifile=","ofile="])
 	except getopt.GetoptError as err:
 		print( '(!) ' + str(err))
 		print( ' ')
 		print( usage())
 		sys.exit(2)
+
+	settings_path = 'showRenamerSettings.json'
+	for o, a in opts:
+		if o in ('-o','--settings'):
+			settings_path = str(a)
+		else:
+			continue
+
+	sr.LoadSettings(settings_path)
+	if not sr.s_passwd:
+		sr.GetPasswdFromFile()
+
 	for o, a in opts:
 		if o in ('-h','--help'):
 			usage()
-			sys.exit()
+			# sys.exit()
 		elif o in ('-d','--directory'):
 			sr.Cd(str(a))
 			# print(ddir)
@@ -370,6 +439,8 @@ if __name__ == "__main__":
 			sr.remote = True
 		elif o in ('-c','--cleanup'):
 			sr.clean = True
+		else:
+			continue
 
 	print( '( ) Local file directory: "' + sr.ddir + '"')
 
@@ -388,6 +459,13 @@ if __name__ == "__main__":
 			sr.RemoteMoveToServer(llist, names)
 		
 	sr.RemoteDisconnect()
+
+	for o, a in opts:
+		if o in ('-g','--settings_save'):
+			sr.SaveSettings(settings_path)
+		else:
+			continue
+			
 	del sr
 
 	sys.exit(0)
